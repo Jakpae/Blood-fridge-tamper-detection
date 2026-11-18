@@ -1,0 +1,8 @@
+{
+  // Cloudflare Workers 정적 사이트 설정: demo 폴더의 index.html을 그대로 배포한다
+  "name": "blood-fridge-tamper-detection",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./demo"
+  }
+}

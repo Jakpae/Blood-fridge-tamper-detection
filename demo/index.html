@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>혈액 냉장고 위변조 탐지 시연</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* 병원 혈액은행 감시실: 차가운 청회색 바탕, 정상은 초록, 경보는 빨강 */
+  --bg: #eef2f5; --panel: #ffffff; --ink: #14202b; --muted: #5b6b78; --line: #d5dde4;
+  --accent: #1f6fa8; --ok: #23854d; --warn: #b7791f; --bad: #c43b2f; --true: #2a6fdb; --calc: #138a6b;
+  --display: "IBM Plex Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  --mono: "IBM Plex Mono", Consolas, monospace;
+  /* 배치: 위 조작 막대, 가운데 두 화면(기존 감시 / 우리 시스템) 나란히, 아래 그래프와 기록 */
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1820; --panel: #17232e; --ink: #e6edf2; --muted: #93a4b1; --line: #2a3a47;
+  --accent: #5aa7e0; --ok: #43b87a; --warn: #e0a64a; --bad: #ef6a5e; --true: #6aa6ff; --calc: #3fc39b; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f1820; --panel: #17232e; --ink: #e6edf2; --muted: #93a4b1; --line: #2a3a47;
+  --accent: #5aa7e0; --ok: #43b87a; --warn: #e0a64a; --bad: #ef6a5e; --true: #6aa6ff; --calc: #3fc39b; color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--display); }
+main { max-width: 1280px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+h1 { font-size: 22px; margin: 0; text-wrap: balance; }
+.clock { font-family: var(--mono); color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.bar .grp { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.bar .lbl { font-size: 12px; color: var(--muted); margin-right: 2px; }
+button { font: inherit; font-size: 14px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 8px; padding: 7px 11px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.atk { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+button.atk.on { background: var(--bad); color: #fff; border-color: var(--bad); }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+select { font: inherit; font-size: 14px; padding: 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.screens { display: grid; grid-template-columns: 1fr 1.25fr; gap: 14px; }
+@media (max-width: 820px) { .screens { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 12px; align-content: start; }
+.card h2 { font-size: 15px; margin: 0; color: var(--muted); font-weight: 500; }
+.big { font-family: var(--mono); font-size: 64px; line-height: 1; font-variant-numeric: tabular-nums; }
+.big small { font-size: 26px; color: var(--muted); }
+.pill { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; padding: 6px 12px; border-radius: 999px; font-size: 15px; width: fit-content; }
+.pill::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
+.pill.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.pill.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
+.pill.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 15px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+.ours.alarm { border-color: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 25%, transparent); }
+.reason { font-size: 16px; font-weight: 500; }
+.advice { border-left: 4px solid var(--bad); padding: 8px 12px; background: color-mix(in srgb, var(--bad) 8%, transparent); font-weight: 500; }
+.chart { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); margin: 0 4px 6px; }
+.legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 6px; }
+canvas { width: 100%; display: block; }
+.log { font-size: 13px; max-height: 150px; overflow-y: auto; display: grid; gap: 4px; }
+.log div { font-variant-numeric: tabular-nums; }
+.log b { font-family: var(--mono); font-weight: 500; color: var(--muted); margin-right: 8px; }
+label.chk { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; border-right: 1px solid var(--line); }
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--bad); color: #fff; }
+.seg button.on[data-v="none"] { background: var(--ok); }
+button.ev.on { background: var(--warn); color: #fff; border-color: var(--warn); }
+button.ev.atkev { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+button.ev.atkev.on { background: var(--bad); border-color: var(--bad); }
+.panel { display: grid; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.row > .lbl { width: 175px; font-size: 13px; color: var(--muted); }
+@media (max-width: 820px) { .row > .lbl { width: 100%; } }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; align-items: center; }
+.chip { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); font-weight: 500; }
+.chip.atk { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+.chip.none { background: transparent; color: var(--muted); font-weight: 400; }
+.ours.warnstate { border-color: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 25%, transparent); }
+.advice.warn { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.hint { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>혈액 냉장고 센서 위변조 탐지 시연</h1>
+    <div class="clock" id="clock">시뮬레이션 시각 —</div>
+  </header>
+
+  <section class="panel" aria-label="시연 조작">
+    <div class="row">
+      <span class="lbl">재생</span>
+      <button class="primary" id="play">일시정지</button>
+      <select id="speed" aria-label="속도">
+        <option value="1">1분/초</option><option value="2" selected>2분/초</option><option value="5">5분/초</option><option value="10">10분/초</option><option value="30">30분/초</option>
+      </select>
+      <button id="ack">경보 확인 (초기화)</button>
+      <button id="reset">처음부터 다시</button>
+      <label class="chk"><input type="checkbox" id="showTrue"> 실제 온도 보기</label>
+    </div>
+    <div class="row">
+      <span class="lbl">냉장고에 실제로 일어나는 일<br><span class="hint">여러 개 동시에 켤 수 있음</span></span>
+      <button id="doorPulse">문 잠깐 열기 (10초)</button>
+      <button class="ev" data-ev="doorStuck">문이 덜 닫힘</button>
+      <button class="ev" data-ev="powerCut">정전·플러그 빠짐</button>
+      <button class="ev atkev" data-ev="heaterOn">제상 히터 강제 켜기 (설정 조작)</button>
+      <button class="ev atkev" data-ev="compOff">냉각기 끄기 (설정 조작)</button>
+      <button class="ev atkev" data-ev="compOn">냉각기 계속 켜기 (설정 조작)</button>
+    </div>
+    <div class="row">
+      <span class="lbl">화면으로 보내는 값 위조</span>
+      <span class="hint">온도</span>
+      <span class="seg" data-sensor="T">
+        <button data-v="none" class="on">그대로</button><button data-v="offset">1.5°C 낮게</button><button data-v="freeze">숫자 멈추기</button><button data-v="replay">전날 기록</button>
+      </span>
+      <span class="hint">압력</span>
+      <span class="seg" data-sensor="P">
+        <button data-v="none" class="on">그대로</button><button data-v="freeze">숫자 멈추기</button><button data-v="replay">전날 기록</button>
+      </span>
+    </div>
+    <div class="row">
+      <span class="lbl">빠른 시나리오</span>
+      <button class="preset" data-p="france">프랑스 사례: 히터 + 온도·압력 전날 기록</button>
+      <button class="preset" data-p="heatdoor">히터 켠 채 문도 열림 + 숫자 멈추기</button>
+      <button class="preset" data-p="offT">냉각기 끄기 + 온도만 전날 기록</button>
+      <button class="preset" data-p="clear">모든 상황 끄기</button>
+    </div>
+    <div class="row"><span class="lbl">지금 켜진 상황</span><div class="chips" id="chips"></div></div>
+  </section>
+
+  <section class="screens">
+    <div class="card">
+      <h2>기존 감시 화면 · 제어기가 보내 주는 값만 본다</h2>
+      <div class="big" id="repT">—<small>°C</small></div>
+      <div class="pill ok" id="oldStatus">정상 범위 (1~6°C)</div>
+      <dl class="kv">
+        <dt>냉매 압력</dt><dd id="repP">—</dd>
+        <dt>경보 기준</dt><dd>표시된 온도가 1°C 미만이거나 6°C 초과일 때</dd>
+      </dl>
+    </div>
+    <div class="card ours" id="ours">
+      <h2>우리 시스템 · 전력과 압력으로 온도를 다시 계산해 비교한다</h2>
+      <div class="pill ok" id="newStatus">정상: 세 값이 서로 맞음</div>
+      <div class="reason" id="reason">전력, 압력, 표시된 온도가 서로 맞는지 1분마다 확인하는 중</div>
+      <dl class="kv">
+        <dt>지금 냉장고 상태 (전력으로 판별)</dt><dd id="state">—</dd>
+        <dt>전력으로 계산한 온도</dt><dd id="calcT">—</dd>
+        <dt>압력으로 계산한 온도</dt><dd id="virtT">—</dd>
+        <dt>이상이 시작된 시각 (추정)</dt><dd id="onset">—</dd>
+        <dt>원인</dt><dd id="cause">—</dd>
+        <dt>우리 시스템이 본 실제 온도</dt><dd id="restT">—</dd>
+        <dt>보관 기준 1~6°C</dt><dd id="limit">—</dd>
+        <dt>기준까지 남은 시간</dt><dd id="left">—</dd>
+      </dl>
+      <div class="advice" id="advice" hidden></div>
+    </div>
+  </section>
+
+  <section class="chart">
+    <div class="legend">
+      <span><i style="background:var(--bad)"></i>표시된 온도</span>
+      <span><i style="background:var(--calc)"></i>우리 시스템이 계산한 온도</span>
+      <span id="lgTrue" hidden><i style="background:var(--true)"></i>실제 냉장고 안 온도</span>
+      <span><i style="background:var(--muted)"></i>전력 (아래)</span>
+      <span><i style="background:var(--bad);height:6px;opacity:.5"></i>공격받는 중</span>
+      <span><i style="background:var(--warn);height:6px;opacity:.6"></i>문 열림·정전 발생 중</span>
+    </div>
+    <canvas id="cv" height="350" aria-label="최근 4시간 온도와 전력 그래프"></canvas>
+  </section>
+
+  <section class="card">
+    <h2>기록</h2>
+    <div class="log" id="log"></div>
+  </section>
+</main>
+<script>
+// 혈액 냉장고 시뮬레이터 + 탐지 엔진 v2 (브라우저/Node 공용)
+// 실험 코드(sim.py, detect.py)와 같은 식을 쓰되, 여러 사건을 동시에 켤 수 있게 했다.
+const P = { a: 1/300, b: 0.25, bTa: 0.015, ramp: 3, h: 0.07, door: 0.30, pn: 0.01,
+  set: 4.0, band: 0.5, defEvery: 480, defOff: 120, defLen: 10, evapDt: 12, pTau: 3,
+  wIdle: 35, wComp: 300, wInrush: 120, wHeat: 550, nT: 0.05, nP: 0.02, nTa: 0.1 };
+// 모델이 정상 데이터에서 배운 값 (냉장고 0번, step2 결과)
+const M = { a: 0.003369, b: 0.2151, h: 0.0670, ramp: 3 };
+const SAFE_HI = 6.0, SAFE_LO = 1.0;
+const ST = { IDLE: 0, COOL: 1, HEAT: 2, OFF: 3, BOTH: 4 };
+
+function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+function makeGauss(r) { return () => { let u = 0, v = 0; while (u === 0) u = r(); v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }; }
+const psat = t => Math.exp(10.975 - 2705 / (t + 273.15));
+const tsat = p => 2705 / (10.975 - Math.log(p)) - 273.15;
+
+class Fridge {
+  constructor(seed) {
+    this.r = rng(seed); this.g = makeGauss(this.r);
+    this.clock = 0; this.T = P.set; this.Te = P.set; this.uPrev = 0; this.since = 99; this.walk = 0;
+    // 실제로 일어나는 일 (여러 개를 동시에 켤 수 있음)
+    this.ev = { doorStuck: false, heaterOn: false, compOff: false, compOn: false, powerCut: false };
+    this.doorPulse = 0; // 이번 분에 사람이 문을 연 시간 [초]
+  }
+  ambient() { this.walk += this.g() * 0.02; this.walk *= 0.995; const h = this.clock / 60; return 22 + 3 * Math.sin(2 * Math.PI * (h - 9) / 24) + this.walk; }
+  step() {
+    const g = this.g, ev = this.ev, hour = (this.clock / 60) % 24;
+    const Ta = this.ambient();
+    // 문: 현장 자문값. 주간 시간당 3~4회, 야간 1~2회, 한 번 열면 3~10초
+    const rate = (hour >= 8 && hour < 20) ? 3.5 / 60 : 1.5 / 60;
+    let door = this.r() < rate ? (3 + this.r() * 7) / 60 : 0;
+    door += this.doorPulse / 60; this.doorPulse = 0;
+    if (ev.doorStuck) door = 1;
+    door = Math.min(1, door);
+    // 제어기
+    const Tc = this.T + g() * P.nT;
+    const defr = ((this.clock - P.defOff) % P.defEvery + P.defEvery) % P.defEvery < P.defLen;
+    let u, d;
+    if (defr) { u = 0; d = 1; } else { d = 0; u = Tc > P.set + P.band ? 1 : Tc < P.set - P.band ? 0 : this.uPrev; }
+    if (ev.heaterOn) { d = 1; u = 0; }          // 공격자가 제상 모드로 고정 (설정 조작)
+    if (ev.compOff) u = 0;                        // 냉각 정지
+    if (ev.compOn) u = 1;                         // 냉각 계속 (온도 조절 무시)
+    if (ev.powerCut) { u = 0; d = 0; }            // 정전·플러그 빠짐
+    this.since = (u && this.uPrev) ? this.since + 1 : (u ? 0 : 99);
+    const ramp = u ? Math.min(1, (this.since + 1) / P.ramp) : 0;
+    const bEff = P.b * (1 - P.bTa * (Ta - 22)) * ramp;
+    this.T += P.a * (Ta - this.T) - bEff + P.h * d + P.door * door + g() * P.pn;
+    const target = u ? this.T - P.evapDt : (d ? this.T + 3 : this.T);
+    this.Te += (target - this.Te) / P.pTau;
+    const Pr = psat(this.Te);
+    let W = u ? P.wComp + 3 * (Ta - 20) + 40 * (Pr - 2) + (this.since < 2 ? P.wInrush : 0) : P.wIdle;
+    if (d) W += P.wHeat;
+    if (ev.powerCut) W = 0;                       // 감시 모듈은 자체 배터리로 계속 측정
+    W = Math.max(0, W + g() * (u ? 6 : ev.powerCut ? 0.5 : 3));
+    this.uPrev = u;
+    const rec = { t: this.clock, Ttrue: this.T, Trep: this.T + g() * P.nT, Prep: Pr + g() * P.nP, W, Ta: Ta + g() * P.nTa, u, d, door };
+    this.clock++;
+    return rec;
+  }
+}
+
+// 전력으로 작동 상태 판별 (학습한 혼합 모델과 같은 경계)
+function powerState(W) { return W < 15 ? ST.OFF : W > 760 ? ST.BOTH : W > 520 ? ST.HEAT : W > 150 ? ST.COOL : ST.IDLE; }
+const isCool = s => s === ST.COOL || s === ST.BOTH, isHeat = s => s === ST.HEAT || s === ST.BOTH;
+
+function stepModel(T, e, m) {
+  const u = isCool(e.st) ? 1 : 0, d = isHeat(e.st) ? 1 : 0;
+  const ramp = u ? Math.min(1, ((e.sinceOn ?? 0) + 1) / m.ramp) : 0;
+  return T + m.a * (e.Ta - T) - m.b * u * ramp + m.h * d;
+}
+
+const WHY = {
+  thermal: '전력으로 계산한 온도보다 표시된 온도가 계속 낮습니다.',
+  pressure: '압력으로 계산한 온도와 표시된 온도가 계속 어긋납니다.',
+  heat: '제상 히터가 평소(10분)보다 오래 켜져 있습니다.',
+  idle: '표시된 온도는 높은데 냉각기가 돌지 않습니다.',
+  power: '전력이 0입니다. 정전이나 플러그 빠짐이 의심됩니다.',
+  cold: '온도가 낮은데 냉각기가 멈추지 않습니다.',
+  longcool: '냉각기가 40분 넘게 쉬지 않고 돕니다. 문 열림이나 냉각 고장이 의심됩니다.',
+};
+
+class Detector {
+  constructor(cfg) { this.cfg = cfg; this.hist = []; this.lastState = -1; this.stateRun = 0; this.since = 99; this.clear(); }
+  // 경보 확인 후 누적값과 경보를 비운다 (기록은 유지)
+  clear() { this.sTh = 0; this.sVhi = 0; this.sVlo = 0; this.runTh = 0; this.runV = 0; this.heatRun = 0; this.warmIdle = 0; this.offRun = 0; this.coldRun = 0; this.coolRun = 0; this.okRun = 0; this.alarm = null; this.agree = null; this.lastVt = null; }
+  virtualT(e) {
+    if (e.run < 8 || e.st === ST.BOTH) return null;   // 상태가 막 바뀌었거나 냉각·히터가 같이 돌면 쓰지 않음
+    const ts = tsat(e.Prep);
+    return e.st === ST.COOL ? ts + P.evapDt : e.st === ST.HEAT ? ts - 3 : ts;
+  }
+  push(rec) {
+    const h = this.hist, c = this.cfg;
+    const st = powerState(rec.W);
+    this.stateRun = st === this.lastState ? this.stateRun + 1 : 0; this.lastState = st;
+    this.since = isCool(st) ? (h.length && isCool(h[h.length - 1].st) ? this.since + 1 : 0) : 99;
+    const e = { ...rec, st, run: this.stateRun, sinceOn: this.since };
+    h.push(e); if (h.length > 3000) h.shift();
+    const n = h.length, out = { st };
+    // (1) 전력 기반 30분 굴림 (화면 온도가 계산보다 낮을 때만 누적)
+    if (n > 31) {
+      let T = h[n - 31].Trep;
+      for (let k = n - 31; k < n - 1; k++) T = stepModel(T, h[k], M);
+      out.pred = T;
+      const z = Math.max(-4, Math.min(4, (rec.Trep - T - c.thMu) / c.thSd));
+      this.sTh = Math.max(0, this.sTh - z - 2);
+    }
+    out.sTh = this.sTh;
+    // (2) 압력 기반 가상 온도 센서
+    const vt = this.virtualT(e);
+    out.virt = vt;
+    if (vt !== null) {
+      const z = Math.max(-4, Math.min(4, (rec.Trep - vt - c.vMu) / c.vSd));
+      this.sVhi = Math.max(0, this.sVhi + z - 1); this.sVlo = Math.max(0, this.sVlo - z - 1);
+    }
+    out.sV = Math.max(this.sVhi, this.sVlo);
+    this.runTh = this.sTh > 0 ? this.runTh + 1 : 0;
+    this.runV = out.sV > 0 ? this.runV + 1 : 0;
+    // (3) 제어 논리 검사
+    this.heatRun = isHeat(st) ? this.heatRun + 1 : 0;
+    this.warmIdle = (st === ST.IDLE && rec.Trep > P.set + P.band + 0.3) ? this.warmIdle + 1 : 0;
+    this.offRun = st === ST.OFF ? this.offRun + 1 : 0;
+    this.coldRun = (isCool(st) && rec.Trep < P.set - P.band - 0.3) ? this.coldRun + 1 : 0;
+    this.coolRun = isCool(st) ? this.coolRun + 1 : 0;
+    out.logic = this.offRun >= 2 ? 'power' : this.heatRun > P.defLen + 2 ? 'heat' : this.warmIdle >= 4 ? 'idle'
+      : this.coldRun >= 4 ? 'cold' : this.coolRun > 40 ? 'longcool' : null;
+    if (vt !== null && out.pred !== undefined) this.agree = (this.agree ?? Math.abs((vt + c.vMu) - (out.pred + c.thMu))) * 0.9 + 0.1 * Math.abs((vt + c.vMu) - (out.pred + c.thMu));
+    let why = null;
+    if (out.sTh > c.thThr) why = 'thermal'; else if (out.sV > c.vThr) why = 'pressure'; else if (out.logic) why = out.logic;
+    if (!this.alarm && why) {
+      const run = why === 'heat' ? this.heatRun : why === 'idle' ? this.warmIdle + 2 : why === 'power' ? this.offRun : why === 'cold' ? this.coldRun + 2 : why === 'longcool' ? 40 : why === 'pressure' ? this.runV : this.runTh;
+      this.alarm = { t: rec.t, why, cause: null, onset: rec.t - Math.min(240, run) };
+    }
+    if (this.alarm) {
+      const a = this.alarm;
+      // 복원: 추정 시작 시점의 화면 온도에서 전력으로 굴림
+      if (a.restoreT === undefined) {
+        const i0 = h.findIndex(x => x.t === a.onset);
+        let T = i0 >= 1 ? h[i0 - 1].Trep : rec.Trep;
+        for (let k = Math.max(i0, 0); k < n; k++) T = stepModel(T, h[k], M);
+        a.restoreT = T;
+      } else a.restoreT = stepModel(a.restoreT, e, M);
+      if (vt !== null) this.lastVt = vt;
+      // 경보 10분 뒤 원인 판별
+      //   화면 온도가 전력으로 계산한 온도와 맞음      → 센서는 정상, 냉장고 자체 이상(설정 조작·고장·정전)
+      //   압력 온도와 전력 온도가 맞음                → 온도 센서만 조작
+      //   그 밖                                      → 온도·압력 모두 조작
+      if (a.cause === null && rec.t - a.t >= 10) {
+        // 제어 논리로 울린 경보(히터·정전 등)에서 화면 온도가 압력 온도와 맞으면 센서는 정상
+        // (문 열림처럼 전력 모델이 모르는 열 때문에 전력 계산과는 어긋날 수 있음)
+        const pOk = a.why !== 'thermal' && a.why !== 'pressure' && this.lastVt != null && Math.abs(rec.Trep - (this.lastVt + c.vMu)) < 0.8;
+        a.cause = (Math.abs(rec.Trep - a.restoreT) < 0.8 || pOk) ? 'none' : (this.agree ?? 9) < 0.8 ? 'T' : 'TP';
+      }
+      out.restore = a.cause === 'none' ? rec.Trep : a.cause === 'T' && this.lastVt != null ? this.lastVt + c.vMu : a.restoreT;
+    }
+    // 우리 시스템이 믿는 온도: 경보 중이면 되살린 온도, 아니면 화면 온도
+    out.best = out.restore ?? rec.Trep;
+    // 원인 판별 전에는 화면 값과 되살린 값 중 더 위험한 쪽으로 판단
+    const cand = this.alarm && this.alarm.cause === null ? [out.best, rec.Trep] : [out.best];
+    out.limit = Math.max(...cand) > SAFE_HI ? 'hi' : Math.min(...cand) < SAFE_LO ? 'lo' : null;   // 절대 기준 (평균이 아니라 값 자체로 판단)
+    // 기준까지 남은 시간: 지금 상태가 이어진다고 가정
+    if (this.alarm || out.limit) {
+      let T = out.best, m = 0;
+      const dir = stepModel(T, e, M) - T;
+      if (out.limit) out.left = 0;
+      else { while (T < SAFE_HI && T > SAFE_LO && m < 600) { T = stepModel(T, e, M); m++; } out.left = m < 600 ? m : null; out.leftTo = dir >= 0 ? SAFE_HI : SAFE_LO; }
+    }
+    // 자동 정상 복귀: 원인 판별이 끝난 경보에서 세 값이 다시 맞고 제어 논리 이상도 없으며
+    // 온도가 기준 안에 있는 상태가 일정 시간 이어지면 경보를 내린다.
+    // 실제 이상이든 센서 조작이든 10분 동안 이어져야 정상으로 본다.
+    if (this.alarm && this.alarm.cause !== null) {
+      // 센서 조작 경보는 지난 표시값에서 출발한 계산(조작된 값을 따라감)이 아니라,
+      // 조작 시작 전부터 전력·압력으로 따로 계산해 온 실제 온도와 비교한다.
+      const tamper = this.alarm.cause !== 'none';
+      const okT = tamper ? (out.restore !== undefined && Math.abs(rec.Trep - out.restore) < 1.0)
+        : (out.pred === undefined || Math.abs(rec.Trep - (out.pred + c.thMu)) < 1.0);
+      const okP = vt === null || Math.abs(rec.Trep - (vt + c.vMu)) < 1.0;
+      const ok = !out.logic && okT && okP && rec.Trep >= SAFE_LO && rec.Trep <= SAFE_HI;
+      this.okRun = ok ? this.okRun + 1 : 0;
+      const need = 10;
+      if (this.okRun >= need) {
+        out.recovered = { ...this.alarm, minutes: this.okRun };
+        this.clear();
+        out.restore = undefined; out.best = rec.Trep; out.limit = null; out.left = undefined;
+      }
+    }
+    out.alarm = this.alarm;
+    return out;
+  }
+}
+if (typeof module !== 'undefined') module.exports = { P, M, ST, Fridge, Detector, powerState, stepModel, psat, tsat, SAFE_HI, SAFE_LO, WHY };
+
+const CFG = {"thMu":-0.21591026883643938,"thSd":0.2,"vMu":0.19215804671612702,"vSd":0.20335126567684045,"thThr":4.4740083520594816,"vThr":19.675368650317225};
+const HIST = 240;
+const EVN = { doorStuck: '문이 덜 닫힘', powerCut: '정전·플러그 빠짐', heaterOn: '제상 히터 강제 켜짐', compOff: '냉각기 꺼짐', compOn: '냉각기 계속 돎' };
+const EV_ATK = { heaterOn: 1, compOff: 1, compOn: 1 };
+const TN = { offset: '온도 1.5°C 낮게', freeze: '온도 숫자 멈춤', replay: '온도 전날 기록' };
+const PN = { freeze: '압력 숫자 멈춤', replay: '압력 전날 기록' };
+const stName = ['쉬는 중', '냉각 중', '제상 히터 켜짐', '전원 꺼짐', '냉각기와 히터가 같이 켜짐'];
+let fridge, det, buf, view, fake, frozen, playing = true, logRows = [], prevLimit = null, prevTrueOut = false;
+const $ = id => document.getElementById(id);
+const fmt = t => { const d = Math.floor(t / 1440) + 1, m = ((t % 1440) + 1440) % 1440; return `${d}일차 ${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+function log(msg, cls) { logRows.unshift(`<div${cls ? ` style="color:var(--${cls})"` : ''}><b>${fmt(fridge.clock - 1)}</b>${msg}</div>`); $('log').innerHTML = logRows.slice(0, 80).join(''); }
+function reset() {
+  fridge = new Fridge(Math.floor(Math.random() * 1e6)); det = new Detector(CFG); buf = []; view = []; fake = { T: 'none', P: 'none' }; frozen = { T: null, P: null }; logRows = [];
+  prevLimit = null; prevTrueOut = false;
+  for (let i = 0; i < 1440 + 480; i++) tick(true); // 하루 넘게 먼저 돌려 '전날 기록'을 채움
+  syncButtons(); log('시연 시작: 정상 운전 중');
+  render();
+}
+function tick(silent) {
+  const r = fridge.step(); buf.push(r); if (buf.length > 3000) buf.shift();
+  const s = { ...r };
+  const old = buf[buf.length - 1 - 1440];
+  if (fake.T === 'offset') s.Trep -= 1.5;
+  if (fake.T === 'freeze') s.Trep = frozen.T + (Math.random() - 0.5) * 0.08;
+  if (fake.T === 'replay' && old) s.Trep = old.Trep;
+  if (fake.P === 'freeze') s.Prep = frozen.P + (Math.random() - 0.5) * 0.02;
+  if (fake.P === 'replay' && old) s.Prep = old.Prep;
+  const o = det.push(s);
+  const prev = view[view.length - 1];
+  const had = prev && prev.o.alarm;
+  const flags = { atk: fake.T !== 'none' || fake.P !== 'none' || Object.keys(EV_ATK).some(k => fridge.ev[k]), ev: ['doorStuck', 'powerCut'].some(k => fridge.ev[k]) || r.door >= 0.15 };
+  view.push({ r, s, o, flags }); if (view.length > HIST) view.shift();
+  if (o.alarm && !had) {
+    // 경보가 울리면 이상 시작 추정 시각부터 지금까지 실제 온도를 전력으로 다시 계산해 채운다
+    const a = o.alarm, h = det.hist; const i0 = h.findIndex(x => x.t === a.onset);
+    if (i0 > 0) { let T = h[i0 - 1].Trep; for (let k = i0; k < h.length; k++) { T = stepModel(T, h[k], M); const vv = view.find(x => x.r.t === h[k].t); if (vv && vv !== view[view.length - 1]) vv.o.restore = T; } }
+  }
+  if (silent) return;
+  if (o.recovered) log(o.recovered.cause === 'none'
+    ? '정상 복귀: 냉장고 상태가 10분 동안 정상으로 유지되어 경보를 해제했습니다'
+    : '정상 복귀: 위조가 멈추고 세 값이 10분 동안 다시 일치해 경보를 해제했습니다 (공격 기록은 남김)', 'ok');
+  if (o.alarm && !had) log(`경보! ${WHY[o.alarm.why]}`, 'bad');
+  if (o.alarm && o.alarm.cause && !(had && had.cause)) log(`원인 판별: ${causeText(o.alarm.cause)}`, o.alarm.cause === 'none' ? 'warn' : 'bad');
+  if (o.limit !== prevLimit) { if (o.limit) log(`경보! 우리 시스템이 본 실제 온도가 ${o.limit === 'hi' ? '6°C를 넘음' : '1°C 아래로 내려감'}`, 'bad'); else if (prevLimit) log('우리 시스템이 본 실제 온도가 기준 안으로 돌아옴'); prevLimit = o.limit; }
+  const trueOut = r.Ttrue > SAFE_HI || r.Ttrue < SAFE_LO;
+  if (trueOut !== prevTrueOut) { log(trueOut ? `(정답) 실제 온도가 ${r.Ttrue > SAFE_HI ? '6°C를 넘음' : '1°C 아래로 내려감'}` : '(정답) 실제 온도가 기준 안으로 돌아옴', 'muted'); prevTrueOut = trueOut; }
+}
+function causeText(c) { return c === 'T' ? '온도 센서만 조작됨 (압력은 믿을 수 있음)' : c === 'TP' ? '온도·압력 센서가 함께 조작됨' : '센서 값은 정상, 냉장고에 실제 이상이 생김 (설정 조작·고장·사고)'; }
+function setEv(k, on, quiet) {
+  if (fridge.ev[k] === on) return;
+  fridge.ev[k] = on;
+  if (on && k === 'compOn') fridge.ev.compOff = false;
+  if (on && k === 'compOff') fridge.ev.compOn = false;
+  if (!quiet) log(`${on ? '켜짐' : '꺼짐'}: ${EVN[k]}`, on ? (EV_ATK[k] ? 'bad' : 'warn') : null);
+}
+function setFake(sensor, v, quiet) {
+  if (fake[sensor] === v) return;
+  const last = buf[buf.length - 1];
+  if (v === 'freeze') frozen[sensor] = sensor === 'T' ? (view[view.length - 1]?.s.Trep ?? last.Trep) : (view[view.length - 1]?.s.Prep ?? last.Prep);
+  fake[sensor] = v;
+  if (!quiet) log(v === 'none' ? `위조 멈춤: ${sensor === 'T' ? '온도' : '압력'} 값을 그대로 보냄` : `위조 시작: ${(sensor === 'T' ? TN : PN)[v]}`, v === 'none' ? null : 'bad');
+}
+const PRESETS = {
+  france: { ev: { heaterOn: true }, T: 'replay', P: 'replay' },
+  heatdoor: { ev: { heaterOn: true, doorStuck: true }, T: 'freeze', P: 'freeze' },
+  offT: { ev: { compOff: true }, T: 'replay', P: 'none' },
+  clear: { ev: {}, T: 'none', P: 'none' },
+};
+function applyPreset(p) {
+  const x = PRESETS[p];
+  for (const k of Object.keys(EVN)) setEv(k, !!x.ev[k]);
+  setFake('T', x.T); setFake('P', x.P);
+  syncButtons(); render();
+}
+function syncButtons() {
+  document.querySelectorAll('.ev').forEach(b => { b.classList.toggle('on', !!fridge.ev[b.dataset.ev]); b.setAttribute('aria-pressed', !!fridge.ev[b.dataset.ev]); });
+  document.querySelectorAll('.seg').forEach(g => g.querySelectorAll('button').forEach(b => { const on = fake[g.dataset.sensor] === b.dataset.v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }));
+  const chips = [];
+  for (const k of Object.keys(EVN)) if (fridge.ev[k]) chips.push(`<span class="chip${EV_ATK[k] ? ' atk' : ''}">${EVN[k]}</span>`);
+  if (fake.T !== 'none') chips.push(`<span class="chip atk">${TN[fake.T]}</span>`);
+  if (fake.P !== 'none') chips.push(`<span class="chip atk">${PN[fake.P]}</span>`);
+  $('chips').innerHTML = chips.length ? chips.join('') : '<span class="chip none">없음 (정상 운전)</span>';
+}
+function render() {
+  const v = view[view.length - 1]; if (!v) return;
+  const { r, s, o } = v;
+  $('clock').textContent = `시뮬레이션 시각 ${fmt(r.t)}`;
+  $('repT').innerHTML = `${s.Trep.toFixed(1)}<small>°C</small>`;
+  $('repP').textContent = `${s.Prep.toFixed(2)} bar`;
+  const oldBad = s.Trep < SAFE_LO || s.Trep > SAFE_HI;
+  $('oldStatus').className = 'pill ' + (oldBad ? 'bad' : 'ok'); $('oldStatus').textContent = oldBad ? '경보: 범위 벗어남' : '정상 범위 (1~6°C)';
+  $('state').textContent = `${stName[o.st]} · ${r.W.toFixed(0)} W`;
+  $('calcT').textContent = o.pred !== undefined ? `${o.pred.toFixed(1)}°C (30분 전부터 전력으로 계산)` : '—';
+  $('virtT').textContent = o.virt != null ? `${(o.virt + CFG.vMu).toFixed(1)}°C` : '상태가 막 바뀌어 계산 보류';
+  const a = o.alarm, tamper = a && (a.cause === 'T' || a.cause === 'TP'), real = a && a.cause === 'none';
+  const bad = tamper || o.limit || (a && a.cause === null);
+  $('ours').classList.toggle('alarm', !!bad); $('ours').classList.toggle('warnstate', !bad && !!real);
+  $('newStatus').className = 'pill ' + (bad ? 'bad' : real ? 'warn' : 'ok');
+  $('newStatus').textContent = tamper ? '경보: 센서 값이 조작됨' : a && a.cause === null ? '경보: 이상 감지, 원인 판별 중' : real && o.limit ? '경보: 실제 온도 기준 이탈 (센서는 정상)' : real ? '주의: 센서는 정상, 냉장고에 실제 이상' : o.limit ? '경보: 실제 온도 기준 이탈' : '정상: 세 값이 서로 맞음';
+  $('reason').textContent = a ? WHY[a.why] : o.limit ? '온도가 보관 기준을 벗어났습니다. 표시된 온도와 계산 값은 서로 맞습니다.' : '전력, 압력, 표시된 온도가 서로 맞는지 1분마다 확인하는 중';
+  $('onset').textContent = a ? `${fmt(a.onset)} (경보는 ${r.t - a.t}분 전에 울림)` : '—';
+  $('cause').textContent = a ? (a.cause === null ? '판별 중… (경보 후 10분간 관찰)' : causeText(a.cause)) : '—';
+  $('restT').textContent = `${o.best.toFixed(1)}°C ${a && a.cause !== 'none' ? '(전력·압력으로 계산한 값)' : '(표시된 온도와 같음)'}`;
+  $('limit').innerHTML = o.limit ? `<b style="color:var(--bad)">벗어남 (${o.limit === 'hi' ? '6°C 초과' : '1°C 미만'})</b>` : '안에 있음';
+  $('left').textContent = (a || o.limit) ? (o.left === 0 ? '이미 벗어났습니다' : o.left == null ? '10시간 이상' : `약 ${o.left}분 (${o.leftTo}°C까지)`) : '—';
+  const adv = $('advice');
+  if (a || o.limit) {
+    adv.hidden = false; adv.className = 'advice' + (!bad ? ' warn' : '');
+    const what = tamper ? '냉장고 설정과 제어망을 점검하세요. 표시된 온도는 믿지 마세요.' : a && a.why === 'power' ? '전원과 플러그를 확인하세요.' : fridge && a && a.why === 'longcool' ? '문이 제대로 닫혔는지, 냉각기가 정상인지 확인하세요.' : '냉장고 설정과 상태를 점검하세요.';
+    adv.textContent = o.left === 0 ? `즉시 혈액을 다른 냉장고로 옮기세요. 우리 시스템이 계산한 실제 온도 기록에서 보관 기준(1~6°C)을 벗어난 시간을 확인해 폐기 여부를 판단하세요. ${what}` : `${o.left == null ? '' : `약 ${o.left}분 안에 `}${what}`;
+  } else adv.hidden = true;
+  draw();
+}
+function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function draw() {
+  const cv = $('cv'), dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = 350;
+  cv.width = W * dpr; cv.height = H * dpr; const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  const L = 44, R = 10, T0 = 22, TH = 210, P0 = 260, PH = 70, showTrue = $('showTrue').checked;
+  const X = i => L + (W - L - R) * i / (HIST - 1), bw = Math.max(1, (W - L - R) / HIST);
+  // 위쪽 띠: 공격받는 중(빨강) / 문 열림·정전 발생 중(주황)
+  view.forEach((v, i) => { if (v.flags.atk) { g.fillStyle = css('--bad'); g.globalAlpha = .45; g.fillRect(X(i), 2, bw + .5, 7); } if (v.flags.ev) { g.fillStyle = css('--warn'); g.globalAlpha = .6; g.fillRect(X(i), 11, bw + .5, 7); } });
+  g.globalAlpha = 1;
+  const vals = view.flatMap(v => [v.s.Trep, ...(showTrue ? [v.r.Ttrue] : []), ...(v.o.restore !== undefined ? [v.o.restore] : [])]);
+  const ymax = Math.max(8, Math.ceil(Math.max(...vals) + 0.5)), ymin = Math.min(0, Math.floor(Math.min(...vals)));
+  const Y = t => T0 + TH * (1 - (t - ymin) / (ymax - ymin));
+  g.font = '12px ' + css('--display'); g.fillStyle = css('--muted'); g.strokeStyle = css('--line'); g.lineWidth = 1;
+  const step = ymax - ymin > 16 ? 5 : 2;
+  for (let t = ymin; t <= ymax; t += step) { g.beginPath(); g.moveTo(L, Y(t)); g.lineTo(W - R, Y(t)); g.stroke(); g.fillStyle = css('--muted'); g.fillText(`${t}°C`, 4, Y(t) + 4); }
+  g.setLineDash([4, 4]); g.strokeStyle = css('--warn');
+  for (const lim of [SAFE_HI, SAFE_LO]) { g.beginPath(); g.moveTo(L, Y(lim)); g.lineTo(W - R, Y(lim)); g.stroke(); }
+  g.setLineDash([]); g.fillStyle = css('--warn'); g.fillText('보관 상한 6°C', L + 6, Y(SAFE_HI) - 5); g.fillText('보관 하한 1°C', L + 6, Y(SAFE_LO) + 14);
+  const line = (get, color, w, dash) => { g.strokeStyle = color; g.lineWidth = w; g.setLineDash(dash || []); g.beginPath(); let on = false;
+    view.forEach((v, i) => { const y = get(v); if (y === undefined || y === null) { on = false; return; } on ? g.lineTo(X(i), Y(y)) : g.moveTo(X(i), Y(y)); on = true; }); g.stroke(); g.setLineDash([]); };
+  line(v => v.o.restore !== undefined ? undefined : v.o.pred, css('--calc'), 1.3, [5, 4]);
+  line(v => v.o.restore, css('--calc'), 2.8);
+  if (showTrue) line(v => v.r.Ttrue, css('--true'), 1.8);
+  line(v => v.s.Trep, css('--bad'), 1.8);
+  view.forEach((v, i) => { if (i && v.o.alarm && !view[i - 1].o.alarm) { g.strokeStyle = css('--bad'); g.lineWidth = 1.5; g.beginPath(); g.moveTo(X(i), T0); g.lineTo(X(i), P0 + PH); g.stroke(); g.fillStyle = css('--bad'); g.fillText('경보', X(i) + 4, T0 + 12); } });
+  g.fillStyle = css('--muted'); g.fillText('전력 W', 4, P0 + 12);
+  const wmax = 950; view.forEach((v, i) => { const h = PH * Math.min(1, v.r.W / wmax); g.fillStyle = v.o.st === 2 || v.o.st === 4 ? css('--warn') : v.o.st === 1 ? css('--accent') : css('--line'); g.fillRect(X(i), P0 + PH - h, bw, h); });
+  g.fillStyle = css('--muted'); g.fillText('4시간 전', L, H - 4); g.fillText('지금', W - R - 26, H - 4);
+}
+let acc = 0;
+setInterval(() => { if (!playing) return; acc += Number($('speed').value) / 10; let k = Math.floor(acc); acc -= k; while (k-- > 0) tick(false); render(); }, 100);
+$('play').onclick = () => { playing = !playing; $('play').textContent = playing ? '일시정지' : '계속'; };
+$('reset').onclick = reset;
+$('ack').onclick = () => { det.clear(); prevLimit = null; log('경보 확인: 탐지기를 초기화하고 다시 감시합니다'); tick(false); render(); };
+$('doorPulse').onclick = () => { fridge.doorPulse = 10; log('냉장고 문을 10초 열었다 닫음 (정상 상황)'); };
+document.querySelectorAll('.ev').forEach(b => b.onclick = () => { setEv(b.dataset.ev, !fridge.ev[b.dataset.ev]); syncButtons(); render(); });
+document.querySelectorAll('.seg').forEach(g => g.querySelectorAll('button').forEach(b => b.onclick = () => { setFake(g.dataset.sensor, b.dataset.v); syncButtons(); render(); }));
+document.querySelectorAll('.preset').forEach(b => b.onclick = () => applyPreset(b.dataset.p));
+$('showTrue').onchange = () => { $('lgTrue').hidden = !$('showTrue').checked; draw(); };
+window.addEventListener('resize', draw);
+reset();
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+simulation/data/
+simulation/models/
+simulation/results/
+simulation/log_*.txt
+.DS_Store
+Thumbs.db
+~$*
