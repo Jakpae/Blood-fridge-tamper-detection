@@ -81,7 +81,7 @@ const WHY = {
 class Detector {
   constructor(cfg) { this.cfg = cfg; this.hist = []; this.lastState = -1; this.stateRun = 0; this.since = 99; this.clear(); }
   // 경보 확인 후 누적값과 경보를 비운다 (기록은 유지)
-  clear() { this.sTh = 0; this.sVhi = 0; this.sVlo = 0; this.runTh = 0; this.runV = 0; this.heatRun = 0; this.warmIdle = 0; this.offRun = 0; this.coldRun = 0; this.coolRun = 0; this.okRun = 0; this.alarm = null; this.agree = null; this.lastVt = null; }
+  clear() { this.sTh = 0; this.sVhi = 0; this.sVlo = 0; this.runTh = 0; this.runV = 0; this.heatRun = 0; this.warmIdle = 0; this.offRun = 0; this.coldRun = 0; this.coolRun = 0; this.okRun = 0; this.alarm = null; this.agree = null; this.lastVt = null; this.unseen = false; }
   virtualT(e) {
     if (e.run < 8 || e.st === ST.BOTH) return null;   // 상태가 막 바뀌었거나 냉각·히터가 같이 돌면 쓰지 않음
     const ts = tsat(e.Prep);
@@ -112,6 +112,14 @@ class Detector {
       this.sVhi = Math.max(0, this.sVhi + z - 1); this.sVlo = Math.max(0, this.sVlo - z - 1);
     }
     out.sV = Math.max(this.sVhi, this.sVlo);
+    // 전력으로 알 수 없는 열(문이 덜 닫힘 등): 표시 온도가 전력 계산보다 높고 압력 온도와는 맞으면
+    // 센서는 정직하고 열이 더 들어오는 것으로 보고, 전력 계산 온도는 쓰지 않는다.
+    // (센서 조작은 과열을 숨기므로 반대로 표시 온도가 전력 계산보다 낮아진다)
+    //   (깜빡임을 막기 위해 켜질 때는 1.0°C, 꺼질 때는 0.5°C 기준을 쓴다)
+    const gap = out.pred !== undefined ? rec.Trep - (out.pred + c.thMu) : 0;
+    const pAgree = vt !== null ? Math.abs(rec.Trep - (vt + c.vMu)) < 0.8 : this.unseen;
+    this.unseen = pAgree && (this.unseen ? gap > 0.5 : gap > 1.0);
+    out.unseenHeat = this.unseen;
     this.runTh = this.sTh > 0 ? this.runTh + 1 : 0;
     this.runV = out.sV > 0 ? this.runV + 1 : 0;
     // (3) 제어 논리 검사
@@ -147,9 +155,9 @@ class Detector {
         // 제어 논리로 울린 경보(히터·정전 등)에서 화면 온도가 압력 온도와 맞으면 센서는 정상
         // (문 열림처럼 전력 모델이 모르는 열 때문에 전력 계산과는 어긋날 수 있음)
         const pOk = a.why !== 'thermal' && a.why !== 'pressure' && this.lastVt != null && Math.abs(rec.Trep - (this.lastVt + c.vMu)) < 0.8;
-        a.cause = (Math.abs(rec.Trep - a.restoreT) < 0.8 || pOk) ? 'none' : (this.agree ?? 9) < 0.8 ? 'T' : 'TP';
+        a.cause = (Math.abs(rec.Trep - a.restoreT) < 0.8 || pOk || out.unseenHeat) ? 'none' : (this.agree ?? 9) < 0.8 ? 'T' : 'TP';
       }
-      out.restore = a.cause === 'none' ? rec.Trep : a.cause === 'T' && this.lastVt != null ? this.lastVt + c.vMu : a.restoreT;
+      out.restore = (a.cause === 'none' || (a.cause === null && out.unseenHeat)) ? rec.Trep : a.cause === 'T' && this.lastVt != null ? this.lastVt + c.vMu : a.restoreT;
     }
     // 우리 시스템이 믿는 온도: 경보 중이면 되살린 온도, 아니면 화면 온도
     out.best = out.restore ?? rec.Trep;
