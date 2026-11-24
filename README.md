@@ -153,6 +153,7 @@ python paper_figs.py       # 보고서·README 그림 → simulation/results/pap
 │   ├── stress/        # 이전 가혹 조건 결과 (문 1~3분)
 │   └── gpu/           # GRU·하이브리드 비교 (가혹 조건)
 └── docs/              # 보고서(docx), 그림
+    └── presentation/  # 발표 PPT, 5분 대본, 국내 특허 조사
 ```
 </details>
 
